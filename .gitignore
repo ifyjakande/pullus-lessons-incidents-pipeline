@@ -1,0 +1,25 @@
+# Service account key & any stray JSON (except departments.json)
+*.json
+!departments.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Editor / OS
+.claude/
+.vscode/
+.idea/
+.DS_Store
+
+# Local-only files in this working directory
+check_access.py
+cleanup_cs_remarks.py
+fix_cs_source.py
+incident_log_template.py
+lesson_learned_template.py
+*.xlsx

@@ -1,0 +1,85 @@
+name: Build Consolidated Report
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 * * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-consolidated-report
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+
+      - name: Load previous hash from state branch
+        run: |
+          mkdir -p .state
+          if git ls-remote --exit-code --heads origin state >/dev/null 2>&1; then
+            git fetch --no-tags --depth=1 origin state
+            git show origin/state:hash.txt > .state/hash.txt 2>/dev/null || true
+          else
+            echo "state branch does not exist yet — first run"
+          fi
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Write service account key
+        env:
+          SA_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+        run: printf '%s' "$SA_JSON" > service-account.json
+
+      - name: Run pipeline
+        env:
+          SA_KEY_PATH: service-account.json
+          OUTPUT_SHEET_ID: ${{ secrets.OUTPUT_SHEET_ID }}
+          STATE_HASH_PATH: .state/hash.txt
+        run: python build_consolidated_report.py
+
+      - name: Remove service account key
+        if: always()
+        run: rm -f service-account.json
+
+      - name: Push updated hash to state branch
+        run: |
+          if [ ! -f .state/hash.txt ]; then
+            echo "No hash file produced — nothing to push"
+            exit 0
+          fi
+
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+
+          WORKTREE=$(mktemp -d)
+          if git ls-remote --exit-code --heads origin state >/dev/null 2>&1; then
+            git fetch --no-tags --depth=1 origin state
+            git worktree add "$WORKTREE" origin/state
+            git -C "$WORKTREE" switch -C state
+          else
+            git worktree add --detach "$WORKTREE"
+            git -C "$WORKTREE" checkout --orphan state
+            git -C "$WORKTREE" rm -rf . >/dev/null 2>&1 || true
+          fi
+
+          cp .state/hash.txt "$WORKTREE/hash.txt"
+          git -C "$WORKTREE" add hash.txt
+
+          if git -C "$WORKTREE" diff --cached --quiet; then
+            echo "Hash unchanged on state branch — skipping push"
+          else
+            git -C "$WORKTREE" commit -m "update source data hash"
+            git -C "$WORKTREE" push origin state
+          fi
