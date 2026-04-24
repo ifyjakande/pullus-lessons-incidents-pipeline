@@ -12,7 +12,8 @@ BASE = Path(__file__).parent
 SA_KEY = Path(os.environ.get("SA_KEY_PATH", str(BASE / "service-account.json")))
 DEPARTMENTS = BASE / "departments.json"
 OUTPUT_SHEET_ID = os.environ["OUTPUT_SHEET_ID"]
-STATE_HASH_PATH = Path(os.environ.get("STATE_HASH_PATH", str(BASE / ".state" / "hash.txt")))
+_state_hash_env = os.environ.get("STATE_HASH_PATH")
+STATE_HASH_PATH = Path(_state_hash_env) if _state_hash_env else None
 
 WAT = timezone(timedelta(hours=1))
 
@@ -605,11 +606,12 @@ def main():
     print(f"  Lesson Learned: {total_lesson} rows across {len(lesson_groups)} depts")
     print(f"  Incident Log:   {total_incident} rows across {len(incident_groups)} depts")
 
-    current_hash = compute_hash(lesson_groups, incident_groups)
-    previous_hash = read_previous_hash()
-    if previous_hash == current_hash:
-        print("Source data unchanged — skipping output sheet update.")
-        return
+    current_hash = None
+    if STATE_HASH_PATH is not None:
+        current_hash = compute_hash(lesson_groups, incident_groups)
+        if read_previous_hash() == current_hash:
+            print("Source data unchanged — skipping output sheet update.")
+            return
 
     now_wat = datetime.now(WAT)
     subtitle = f"Updated {now_wat.strftime('%d %b %Y')} · {now_wat.strftime('%-I:%M %p').lower()} WAT"
@@ -644,7 +646,8 @@ def main():
             body={"requests": requests[i:i + CHUNK]},
         ).execute(num_retries=API_RETRIES)
 
-    write_current_hash(current_hash)
+    if current_hash is not None:
+        write_current_hash(current_hash)
     print("Done.")
     print(f"  Output: https://docs.google.com/spreadsheets/d/{OUTPUT_SHEET_ID}/edit")
 
