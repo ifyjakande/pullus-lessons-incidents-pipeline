@@ -200,11 +200,7 @@ def _load_one(sheets_api, sid, source_cols, date_idx_out, impact_idx_out, status
         has_id = bool(padded[0])
         tail = padded[1:]
         non_empty_tail = sum(1 for c in tail if c)
-        if has_id and non_empty_tail >= 1:
-            pass
-        elif not has_id and non_empty_tail >= 3:
-            pass
-        else:
+        if non_empty_tail < (1 if has_id else 3):
             continue
         padded = tail
         flags = {}
