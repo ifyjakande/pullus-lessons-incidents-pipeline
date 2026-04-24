@@ -16,6 +16,8 @@ STATE_HASH_PATH = Path(os.environ.get("STATE_HASH_PATH", str(BASE / ".state" / "
 
 WAT = timezone(timedelta(hours=1))
 
+API_RETRIES = 5
+
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 ID_RE = re.compile(r"/d/([a-zA-Z0-9-_]+)")
 
@@ -185,7 +187,7 @@ def _load_one(sheets_api, sid, source_cols, date_idx_out, impact_idx_out, status
         spreadsheetId=sid, range=f"A4:{end_col}200",
         valueRenderOption="UNFORMATTED_VALUE",
         dateTimeRenderOption="FORMATTED_STRING",
-    ).execute()
+    ).execute(num_retries=API_RETRIES)
     rows = resp.get("values", [])
     out_rows = []
     out_flags = []
@@ -251,7 +253,7 @@ def rgb(hex_code):
 
 
 def reset_output_sheet(sheets_api):
-    meta = sheets_api.spreadsheets().get(spreadsheetId=OUTPUT_SHEET_ID).execute()
+    meta = sheets_api.spreadsheets().get(spreadsheetId=OUTPUT_SHEET_ID).execute(num_retries=API_RETRIES)
     existing = meta.get("sheets", [])
     by_name = {s["properties"]["title"]: s for s in existing}
 
@@ -280,7 +282,7 @@ def reset_output_sheet(sheets_api):
     if add_reqs:
         resp = sheets_api.spreadsheets().batchUpdate(
             spreadsheetId=OUTPUT_SHEET_ID, body={"requests": add_reqs}
-        ).execute()
+        ).execute(num_retries=API_RETRIES)
         for r in resp["replies"]:
             p = r["addSheet"]["properties"]
             keep[p["title"]] = p["sheetId"]
@@ -307,7 +309,7 @@ def reset_output_sheet(sheets_api):
     if reset_reqs:
         sheets_api.spreadsheets().batchUpdate(
             spreadsheetId=OUTPUT_SHEET_ID, body={"requests": reset_reqs}
-        ).execute()
+        ).execute(num_retries=API_RETRIES)
 
     extras = [
         s["properties"]["sheetId"] for s in existing
@@ -317,7 +319,7 @@ def reset_output_sheet(sheets_api):
         sheets_api.spreadsheets().batchUpdate(
             spreadsheetId=OUTPUT_SHEET_ID,
             body={"requests": [{"deleteSheet": {"sheetId": sid}} for sid in extras]},
-        ).execute()
+        ).execute(num_retries=API_RETRIES)
 
     return keep["Lesson Learned"], keep["Incident Log"]
 
@@ -609,7 +611,8 @@ def main():
         print("Source data unchanged — skipping output sheet update.")
         return
 
-    subtitle = f"Updated {datetime.now(WAT).strftime('%d %b %Y · %H:%M')} WAT"
+    now_wat = datetime.now(WAT)
+    subtitle = f"Updated {now_wat.strftime('%d %b %Y')} · {now_wat.strftime('%-I:%M %p').lower()} WAT"
 
     print("Resetting output tabs...")
     lesson_sheet_id, incident_sheet_id = reset_output_sheet(sheets_api)
@@ -639,7 +642,7 @@ def main():
         sheets_api.spreadsheets().batchUpdate(
             spreadsheetId=OUTPUT_SHEET_ID,
             body={"requests": requests[i:i + CHUNK]},
-        ).execute()
+        ).execute(num_retries=API_RETRIES)
 
     write_current_hash(current_hash)
     print("Done.")
