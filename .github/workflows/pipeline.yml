@@ -12,15 +12,12 @@ concurrency:
   group: build-consolidated-report
   cancel-in-progress: false
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout main
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Load previous hash from state branch
         run: |
@@ -32,7 +29,7 @@ jobs:
             echo "state branch does not exist yet — first run"
           fi
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
